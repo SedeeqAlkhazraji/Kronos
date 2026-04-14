@@ -13,6 +13,14 @@ warnings.filterwarnings('ignore')
 
 # Add project root directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add webui directory to path for local imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import database as db
+import data_fetcher
+from signal_engine import generate_signal
+import alert_manager
+import backtest_engine
 
 try:
     from model import Kronos, KronosTokenizer, KronosPredictor
@@ -23,6 +31,9 @@ except ImportError:
 
 app = Flask(__name__)
 CORS(app)
+
+# Initialize database
+db.init_db()
 
 # Global variables to store models
 tokenizer = None
@@ -610,6 +621,14 @@ def predict():
         except Exception as e:
             print(f"Failed to save prediction results: {e}")
         
+        # Generate buy/sell signal from predictions
+        signal_result = None
+        try:
+            current_close = float(x_df['close'].iloc[-1])
+            signal_result = generate_signal(current_close, pred_df)
+        except Exception as e:
+            print(f"Signal generation failed: {e}")
+
         return jsonify({
             'success': True,
             'prediction_type': prediction_type,
@@ -617,9 +636,10 @@ def predict():
             'prediction_results': prediction_results,
             'actual_data': actual_data,
             'has_comparison': len(actual_data) > 0,
+            'signal': signal_result,
             'message': f'Prediction completed, generated {pred_len} prediction points' + (f', including {len(actual_data)} actual data points for comparison' if len(actual_data) > 0 else '')
         })
-        
+
     except Exception as e:
         return jsonify({'error': f'Prediction failed: {str(e)}'}), 500
 
@@ -697,12 +717,461 @@ def get_model_status():
             'message': 'Kronos model library not available, please install related dependencies'
         })
 
+# ==================== Crypto Data Endpoints ====================
+
+@app.route('/api/crypto/symbols')
+def get_crypto_symbols():
+    """Get available cryptocurrency trading pairs."""
+    return jsonify({'symbols': data_fetcher.get_available_symbols()})
+
+
+@app.route('/api/crypto/fetch', methods=['POST'])
+def fetch_crypto_data():
+    """Fetch live OHLCV data from Binance and save as CSV."""
+    try:
+        data = request.get_json()
+        symbol = data.get('symbol', 'BTCUSDT')
+        interval = data.get('interval', '1h')
+        limit = int(data.get('limit', 500))
+
+        df = data_fetcher.fetch_klines(symbol, interval, limit)
+        filepath = data_fetcher.save_klines_to_csv(df, symbol, interval)
+
+        return jsonify({
+            'success': True,
+            'file_path': filepath,
+            'rows': len(df),
+            'symbol': symbol,
+            'interval': interval,
+            'start_date': df['timestamps'].iloc[0].isoformat() if len(df) > 0 else None,
+            'end_date': df['timestamps'].iloc[-1].isoformat() if len(df) > 0 else None,
+            'message': f'Fetched {len(df)} candles for {symbol}'
+        })
+    except Exception as e:
+        return jsonify({'error': f'Failed to fetch data: {str(e)}'}), 500
+
+
+@app.route('/api/crypto/price/<symbol>')
+def get_crypto_price(symbol):
+    """Get current price for a symbol."""
+    try:
+        price = data_fetcher.get_current_price(symbol.upper())
+        return jsonify({'symbol': symbol.upper(), 'price': price})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ==================== Signal Endpoints ====================
+
+@app.route('/api/signals/generate', methods=['POST'])
+def generate_signal_endpoint():
+    """Run Kronos prediction and generate buy/sell signal for a symbol."""
+    try:
+        data = request.get_json()
+        symbol = data.get('symbol', 'BTCUSDT')
+        interval = data.get('interval', '1h')
+        lookback = int(data.get('lookback', 400))
+        pred_len = int(data.get('pred_len', 120))
+        temperature = float(data.get('temperature', 1.0))
+        top_p = float(data.get('top_p', 0.9))
+        sample_count = int(data.get('sample_count', 1))
+        buy_threshold = float(data.get('buy_threshold', 0.02))
+        sell_threshold = float(data.get('sell_threshold', -0.02))
+
+        if not MODEL_AVAILABLE or predictor is None:
+            return jsonify({'error': 'Model not loaded. Load a model first via /api/load-model'}), 400
+
+        # Fetch live data
+        limit = lookback + pred_len
+        df = data_fetcher.fetch_klines(symbol, interval, limit)
+        if len(df) < lookback:
+            return jsonify({'error': f'Insufficient data fetched: {len(df)} rows, need {lookback}'}), 400
+
+        required_cols = ['open', 'high', 'low', 'close']
+        if 'volume' in df.columns:
+            required_cols.append('volume')
+
+        x_df = df.iloc[:lookback][required_cols]
+        x_timestamp = pd.Series(df['timestamps'].iloc[:lookback].values, name='timestamps')
+        y_timestamp = pd.Series(df['timestamps'].iloc[lookback:lookback + pred_len].values, name='timestamps')
+
+        if len(y_timestamp) < pred_len:
+            # If not enough future timestamps, generate them
+            last_ts = df['timestamps'].iloc[-1]
+            time_diff = df['timestamps'].iloc[1] - df['timestamps'].iloc[0]
+            extra = pd.date_range(start=last_ts + time_diff, periods=pred_len - len(y_timestamp), freq=time_diff)
+            y_timestamp = pd.Series(
+                list(y_timestamp.values) + list(extra.values), name='timestamps'
+            )
+
+        pred_df = predictor.predict(
+            df=x_df, x_timestamp=x_timestamp, y_timestamp=y_timestamp,
+            pred_len=pred_len, T=temperature, top_p=top_p, sample_count=sample_count
+        )
+
+        current_close = float(df['close'].iloc[lookback - 1])
+        signal_result = generate_signal(current_close, pred_df, buy_threshold, sell_threshold)
+
+        # Determine which model is loaded
+        model_name = 'unknown'
+        for key, cfg in AVAILABLE_MODELS.items():
+            if cfg['model_id'] in str(type(predictor.model)):
+                model_name = cfg['name']
+                break
+        else:
+            model_name = predictor.model.__class__.__name__
+
+        # Save signal to database
+        db.save_signal(
+            symbol=symbol,
+            signal_type=signal_result['signal'],
+            confidence=signal_result['confidence'],
+            current_price=current_close,
+            predicted_price=signal_result['predicted_close'],
+            price_change_pct=signal_result['price_change_pct'],
+            pred_len=pred_len,
+            model_used=model_name,
+            details=signal_result['details']
+        )
+
+        # Check alerts
+        try:
+            alert_manager._check_alerts()
+        except Exception:
+            pass
+
+        return jsonify({
+            'success': True,
+            'symbol': symbol,
+            'current_price': current_close,
+            'signal': signal_result['signal'],
+            'confidence': signal_result['confidence'],
+            'predicted_close': signal_result['predicted_close'],
+            'price_change_pct': signal_result['price_change_pct'],
+            'details': signal_result['details'],
+            'prediction_data': [
+                {
+                    'open': float(row['open']), 'high': float(row['high']),
+                    'low': float(row['low']), 'close': float(row['close'])
+                }
+                for _, row in pred_df.iterrows()
+            ]
+        })
+    except Exception as e:
+        return jsonify({'error': f'Signal generation failed: {str(e)}'}), 500
+
+
+@app.route('/api/signals/history')
+def get_signal_history():
+    """Get signal history, optionally filtered by symbol."""
+    symbol = request.args.get('symbol')
+    limit = int(request.args.get('limit', 50))
+    signals = db.get_signals(symbol=symbol, limit=limit)
+    return jsonify({'signals': signals})
+
+
+@app.route('/api/signals/latest/<symbol>')
+def get_latest_signal_endpoint(symbol):
+    """Get the latest signal for a symbol."""
+    signal = db.get_latest_signal(symbol.upper())
+    if signal:
+        return jsonify({'signal': signal})
+    return jsonify({'signal': None, 'message': 'No signals found for this symbol'})
+
+
+# ==================== Watchlist Endpoints ====================
+
+@app.route('/api/watchlist', methods=['GET'])
+def get_watchlist():
+    """Get the user's watchlist."""
+    items = db.get_watchlist()
+    return jsonify({'watchlist': items})
+
+
+@app.route('/api/watchlist', methods=['POST'])
+def add_watchlist_item():
+    """Add a symbol to the watchlist."""
+    data = request.get_json()
+    symbol = data.get('symbol', '').upper()
+    interval = data.get('interval', '1h')
+    if not symbol:
+        return jsonify({'error': 'Symbol is required'}), 400
+    success = db.add_to_watchlist(symbol, interval=interval)
+    if success:
+        return jsonify({'success': True, 'message': f'{symbol} added to watchlist'})
+    return jsonify({'error': f'{symbol} is already in watchlist'}), 409
+
+
+@app.route('/api/watchlist/<int:item_id>', methods=['DELETE'])
+def remove_watchlist_item(item_id):
+    """Remove a symbol from the watchlist."""
+    db.remove_from_watchlist(item_id)
+    return jsonify({'success': True})
+
+
+# ==================== Portfolio Endpoints ====================
+
+@app.route('/api/portfolio/positions', methods=['GET'])
+def get_positions():
+    """List all portfolio positions."""
+    status = request.args.get('status')
+    positions = db.get_positions(status=status)
+    return jsonify({'positions': positions})
+
+
+@app.route('/api/portfolio/positions', methods=['POST'])
+def add_position():
+    """Add a new portfolio position."""
+    data = request.get_json()
+    required = ['symbol', 'side', 'quantity', 'entry_price', 'entry_date']
+    for field in required:
+        if field not in data:
+            return jsonify({'error': f'Missing required field: {field}'}), 400
+    db.add_position(
+        symbol=data['symbol'],
+        side=data['side'],
+        quantity=float(data['quantity']),
+        entry_price=float(data['entry_price']),
+        entry_date=data['entry_date'],
+        notes=data.get('notes')
+    )
+    return jsonify({'success': True, 'message': 'Position added'})
+
+
+@app.route('/api/portfolio/positions/<int:position_id>', methods=['PUT'])
+def close_position(position_id):
+    """Close a position by setting exit price and date."""
+    data = request.get_json()
+    exit_price = data.get('exit_price')
+    exit_date = data.get('exit_date')
+    if not exit_price or not exit_date:
+        return jsonify({'error': 'exit_price and exit_date are required'}), 400
+    db.update_position(position_id, float(exit_price), exit_date)
+    return jsonify({'success': True, 'message': 'Position closed'})
+
+
+@app.route('/api/portfolio/positions/<int:position_id>', methods=['DELETE'])
+def delete_position_endpoint(position_id):
+    """Delete a position."""
+    db.delete_position(position_id)
+    return jsonify({'success': True})
+
+
+@app.route('/api/portfolio/summary')
+def get_portfolio_summary():
+    """Get portfolio summary with P&L calculations."""
+    positions = db.get_positions()
+    total_invested = 0.0
+    total_current_value = 0.0
+    total_realized_pnl = 0.0
+    open_positions = []
+    closed_positions = []
+
+    for pos in positions:
+        cost = pos['quantity'] * pos['entry_price']
+        if pos['status'] == 'open':
+            try:
+                current_price = data_fetcher.get_current_price(pos['symbol'])
+            except Exception:
+                current_price = pos['entry_price']
+            current_value = pos['quantity'] * current_price
+            unrealized_pnl = current_value - cost
+            pnl_pct = (unrealized_pnl / cost * 100) if cost > 0 else 0
+            total_invested += cost
+            total_current_value += current_value
+            open_positions.append({
+                **pos,
+                'current_price': current_price,
+                'current_value': round(current_value, 2),
+                'unrealized_pnl': round(unrealized_pnl, 2),
+                'pnl_pct': round(pnl_pct, 2),
+            })
+        else:
+            exit_value = pos['quantity'] * (pos['exit_price'] or pos['entry_price'])
+            realized_pnl = exit_value - cost
+            pnl_pct = (realized_pnl / cost * 100) if cost > 0 else 0
+            total_realized_pnl += realized_pnl
+            closed_positions.append({
+                **pos,
+                'realized_pnl': round(realized_pnl, 2),
+                'pnl_pct': round(pnl_pct, 2),
+            })
+
+    total_unrealized_pnl = total_current_value - total_invested
+
+    return jsonify({
+        'summary': {
+            'total_invested': round(total_invested, 2),
+            'total_current_value': round(total_current_value, 2),
+            'total_unrealized_pnl': round(total_unrealized_pnl, 2),
+            'total_realized_pnl': round(total_realized_pnl, 2),
+            'total_pnl': round(total_unrealized_pnl + total_realized_pnl, 2),
+            'open_count': len(open_positions),
+            'closed_count': len(closed_positions),
+        },
+        'open_positions': open_positions,
+        'closed_positions': closed_positions,
+    })
+
+
+# ==================== Alert Endpoints ====================
+
+@app.route('/api/alerts', methods=['GET'])
+def get_alerts():
+    """List all alerts."""
+    active_only = request.args.get('active_only', 'false').lower() == 'true'
+    alerts = db.get_alerts(active_only=active_only)
+    return jsonify({'alerts': alerts})
+
+
+@app.route('/api/alerts', methods=['POST'])
+def create_alert():
+    """Create a new alert."""
+    data = request.get_json()
+    symbol = data.get('symbol', '').upper()
+    alert_type = data.get('alert_type', 'signal_change')
+    condition = data.get('condition', {})
+    if not symbol:
+        return jsonify({'error': 'Symbol is required'}), 400
+    db.create_alert(symbol, alert_type, condition)
+    return jsonify({'success': True, 'message': f'Alert created for {symbol}'})
+
+
+@app.route('/api/alerts/<int:alert_id>', methods=['PUT'])
+def update_alert_endpoint(alert_id):
+    """Enable or disable an alert."""
+    data = request.get_json()
+    is_active = data.get('is_active', True)
+    db.update_alert(alert_id, 1 if is_active else 0)
+    return jsonify({'success': True})
+
+
+@app.route('/api/alerts/<int:alert_id>', methods=['DELETE'])
+def delete_alert_endpoint(alert_id):
+    """Delete an alert."""
+    db.delete_alert(alert_id)
+    return jsonify({'success': True})
+
+
+@app.route('/api/alerts/notifications', methods=['GET'])
+def get_notifications():
+    """Get notifications, optionally unseen only."""
+    unseen_only = request.args.get('unseen_only', 'false').lower() == 'true'
+    limit = int(request.args.get('limit', 50))
+    notifications = db.get_notifications(unseen_only=unseen_only, limit=limit)
+    return jsonify({'notifications': notifications})
+
+
+@app.route('/api/alerts/notifications/<int:notification_id>/seen', methods=['PUT'])
+def mark_notification_seen(notification_id):
+    """Mark a notification as seen."""
+    db.mark_notification_seen(notification_id)
+    return jsonify({'success': True})
+
+
+# ==================== Backtest Endpoints ====================
+
+@app.route('/api/backtest/run', methods=['POST'])
+def run_backtest():
+    """Run a backtest on historical data."""
+    try:
+        if not MODEL_AVAILABLE or predictor is None:
+            return jsonify({'error': 'Model not loaded. Load a model first.'}), 400
+
+        data = request.get_json()
+        symbol = data.get('symbol', 'BTCUSDT')
+        interval = data.get('interval', '1h')
+        strategy = data.get('strategy', 'threshold')
+        initial_capital = float(data.get('initial_capital', 10000))
+        buy_threshold = float(data.get('buy_threshold', 0.02))
+        sell_threshold = float(data.get('sell_threshold', -0.02))
+        min_confidence = float(data.get('min_confidence', 0.5))
+        lookback = int(data.get('lookback', 400))
+        pred_len = int(data.get('pred_len', 120))
+        data_limit = int(data.get('data_limit', 2000))
+
+        # Fetch historical data
+        df = data_fetcher.fetch_klines_extended(symbol, interval, total_limit=data_limit)
+        if len(df) < lookback + pred_len:
+            return jsonify({'error': f'Insufficient data: {len(df)} rows, need at least {lookback + pred_len}'}), 400
+
+        # Ensure amount column exists
+        if 'amount' not in df.columns:
+            df['amount'] = df['volume'] * df[['open', 'high', 'low', 'close']].mean(axis=1)
+
+        results = backtest_engine.run_backtest(
+            historical_df=df,
+            predictor=predictor,
+            pred_len=pred_len,
+            lookback=lookback,
+            strategy=strategy,
+            initial_capital=initial_capital,
+            buy_threshold=buy_threshold,
+            sell_threshold=sell_threshold,
+            min_confidence=min_confidence,
+        )
+
+        if 'error' in results:
+            return jsonify({'error': results['error']}), 400
+
+        # Save to database
+        db.save_backtest(
+            symbol=symbol,
+            strategy=strategy,
+            start_date=results.get('start_date'),
+            end_date=results.get('end_date'),
+            initial_capital=initial_capital,
+            final_capital=results['final_capital'],
+            total_return_pct=results['total_return_pct'],
+            sharpe_ratio=results['sharpe_ratio'],
+            max_drawdown_pct=results['max_drawdown_pct'],
+            win_rate=results['win_rate'],
+            total_trades=results['total_trades'],
+            details={
+                'trades': results['trades'],
+                'equity_curve': results['equity_curve'],
+                'profit_factor': results['profit_factor'],
+            }
+        )
+
+        return jsonify({'success': True, 'results': results})
+    except Exception as e:
+        return jsonify({'error': f'Backtest failed: {str(e)}'}), 500
+
+
+@app.route('/api/backtest/history')
+def get_backtest_history():
+    """Get past backtest results."""
+    symbol = request.args.get('symbol')
+    limit = int(request.args.get('limit', 20))
+    backtests = db.get_backtests(symbol=symbol, limit=limit)
+    return jsonify({'backtests': backtests})
+
+
+@app.route('/api/backtest/<int:backtest_id>')
+def get_backtest_detail(backtest_id):
+    """Get detailed backtest result."""
+    bt = db.get_backtest_by_id(backtest_id)
+    if bt:
+        if bt.get('details') and isinstance(bt['details'], str):
+            bt['details'] = json.loads(bt['details'])
+        return jsonify({'backtest': bt})
+    return jsonify({'error': 'Backtest not found'}), 404
+
+
 if __name__ == '__main__':
-    print("Starting Kronos Web UI...")
+    print("Starting Kronos Invest...")
     print(f"Model availability: {MODEL_AVAILABLE}")
+
+    # Initialize database
+    db.init_db()
+
+    # Start alert scheduler
+    alert_manager.start_scheduler()
+
     if MODEL_AVAILABLE:
-        print("Tip: You can load Kronos model through /api/load-model endpoint")
+        print("Tip: Load a Kronos model via /api/load-model, then generate signals via /api/signals/generate")
     else:
-        print("Tip: Will use simulated data for demonstration")
-    
-    app.run(debug=True, host='0.0.0.0', port=7070)
+        print("Tip: Install Kronos model dependencies first")
+
+    app.run(debug=True, host='0.0.0.0', port=7070, use_reloader=False)

@@ -375,6 +375,91 @@
             color: #718096;
         }
 
+        /* Signal display styles */
+        .signal-panel {
+            display: none;
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .signal-badge {
+            display: inline-block;
+            padding: 12px 36px;
+            border-radius: 8px;
+            font-size: 2rem;
+            font-weight: 800;
+            letter-spacing: 2px;
+            margin-bottom: 10px;
+        }
+
+        .signal-badge.buy {
+            background: #c6f6d5;
+            color: #22543d;
+            border: 2px solid #48bb78;
+        }
+
+        .signal-badge.sell {
+            background: #fed7d7;
+            color: #742a2a;
+            border: 2px solid #fc8181;
+        }
+
+        .signal-badge.hold {
+            background: #e2e8f0;
+            color: #4a5568;
+            border: 2px solid #a0aec0;
+        }
+
+        .confidence-bar-container {
+            width: 60%;
+            margin: 10px auto;
+            background: #e2e8f0;
+            border-radius: 6px;
+            height: 14px;
+            overflow: hidden;
+        }
+
+        .confidence-bar {
+            height: 100%;
+            border-radius: 6px;
+            transition: width 0.5s ease;
+        }
+
+        .confidence-bar.high { background: #48bb78; }
+        .confidence-bar.medium { background: #ed8936; }
+        .confidence-bar.low { background: #fc8181; }
+
+        .signal-details {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+        }
+
+        .signal-detail-item {
+            text-align: center;
+        }
+
+        .signal-detail-item .label {
+            font-size: 0.75rem;
+            color: #718096;
+            text-transform: uppercase;
+        }
+
+        .signal-detail-item .value {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #2d3748;
+        }
+
+        .signal-detail-item .value.positive { color: #38a169; }
+        .signal-detail-item .value.negative { color: #e53e3e; }
+
         .loading {
             display: none;
             text-align: center;
@@ -577,7 +662,37 @@
             </div>
 
             <div class="chart-container">
-                <h2>📈 Prediction Results Chart</h2>
+                <!-- Signal Display -->
+                <div id="signal-panel" class="signal-panel">
+                    <div id="signal-badge" class="signal-badge hold">HOLD</div>
+                    <div style="margin-top:6px;">
+                        <span style="font-size:0.85rem;color:#718096;">Confidence:</span>
+                        <span id="signal-confidence-text" style="font-weight:700;">0%</span>
+                    </div>
+                    <div class="confidence-bar-container">
+                        <div id="signal-confidence-bar" class="confidence-bar low" style="width:0%"></div>
+                    </div>
+                    <div class="signal-details">
+                        <div class="signal-detail-item">
+                            <div class="label">Current Price</div>
+                            <div class="value" id="signal-current-price">-</div>
+                        </div>
+                        <div class="signal-detail-item">
+                            <div class="label">Predicted Avg Close</div>
+                            <div class="value" id="signal-predicted-price">-</div>
+                        </div>
+                        <div class="signal-detail-item">
+                            <div class="label">Expected Change</div>
+                            <div class="value" id="signal-change-pct">-</div>
+                        </div>
+                        <div class="signal-detail-item">
+                            <div class="label">Trend Consistency</div>
+                            <div class="value" id="signal-trend">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <h2>Prediction Results Chart</h2>
                 <div id="chart"></div>
                 
                 <!-- Comparison Analysis -->
@@ -1101,12 +1216,58 @@
             // Display chart
             const chartData = JSON.parse(result.chart);
             Plotly.newPlot('chart', chartData.data, chartData.layout);
-            
+
+            // Display signal if available
+            if (result.signal) {
+                displaySignal(result.signal);
+            }
+
             // Display comparison analysis (if actual data exists)
             if (result.has_comparison) {
                 displayComparisonAnalysis(result);
             } else {
                 document.getElementById('comparison-section').style.display = 'none';
+            }
+        }
+
+        // Display buy/sell/hold signal
+        function displaySignal(signal) {
+            const panel = document.getElementById('signal-panel');
+            panel.style.display = 'block';
+
+            // Badge
+            const badge = document.getElementById('signal-badge');
+            badge.textContent = signal.signal;
+            badge.className = 'signal-badge ' + signal.signal.toLowerCase();
+
+            // Confidence
+            const confPct = Math.round(signal.confidence * 100);
+            document.getElementById('signal-confidence-text').textContent = confPct + '%';
+            const bar = document.getElementById('signal-confidence-bar');
+            bar.style.width = confPct + '%';
+            bar.className = 'confidence-bar ' + (confPct >= 70 ? 'high' : confPct >= 40 ? 'medium' : 'low');
+
+            // Price details
+            const details = signal.details || {};
+            document.getElementById('signal-current-price').textContent =
+                signal.predicted_close ? '$' + (signal.predicted_close - (signal.predicted_close * signal.price_change_pct / 100 / (1 + signal.price_change_pct / 100))).toFixed(2) : '-';
+
+            // Compute current price from predicted_close and change_pct
+            const changePct = signal.price_change_pct || 0;
+            const predictedClose = signal.predicted_close || 0;
+            const currentPrice = predictedClose / (1 + changePct / 100);
+            document.getElementById('signal-current-price').textContent = '$' + currentPrice.toFixed(2);
+            document.getElementById('signal-predicted-price').textContent = '$' + predictedClose.toFixed(2);
+
+            const changeEl = document.getElementById('signal-change-pct');
+            changeEl.textContent = (changePct >= 0 ? '+' : '') + changePct.toFixed(2) + '%';
+            changeEl.className = 'value ' + (changePct >= 0 ? 'positive' : 'negative');
+
+            const trendEl = document.getElementById('signal-trend');
+            if (details.trend_consistency !== undefined) {
+                trendEl.textContent = Math.round(details.trend_consistency * 100) + '%';
+            } else {
+                trendEl.textContent = '-';
             }
         }
 
