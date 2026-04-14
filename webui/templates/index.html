@@ -751,6 +751,169 @@
             margin-bottom: 0;
         }
 
+        /* Alerts Styles */
+        .alerts-container {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .alerts-container h2 {
+            color: #4a5568;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 10px;
+        }
+
+        .alerts-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+
+        @media (max-width: 900px) {
+            .alerts-grid { grid-template-columns: 1fr; }
+        }
+
+        .alerts-panel {
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        .alerts-panel h3 {
+            color: #4a5568;
+            margin-bottom: 14px;
+            font-size: 1.05rem;
+        }
+
+        .watchlist-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+
+        .watchlist-item .wl-symbol {
+            font-weight: 700;
+            color: #2d3748;
+        }
+
+        .watchlist-item .wl-meta {
+            font-size: 0.8rem;
+            color: #718096;
+        }
+
+        .alert-item {
+            padding: 12px;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+
+        .alert-item .alert-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+
+        .alert-item .alert-symbol {
+            font-weight: 700;
+            color: #2d3748;
+        }
+
+        .alert-type-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .alert-type-badge.signal { background: #bee3f8; color: #2a4365; }
+        .alert-type-badge.price { background: #fefcbf; color: #744210; }
+
+        .alert-condition {
+            font-size: 0.8rem;
+            color: #718096;
+        }
+
+        .alert-active-toggle {
+            cursor: pointer;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            border: none;
+        }
+
+        .alert-active-toggle.on {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        .alert-active-toggle.off {
+            background: #e2e8f0;
+            color: #718096;
+        }
+
+        .notification-item {
+            padding: 10px 12px;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            cursor: pointer;
+        }
+
+        .notification-item.unseen {
+            border-left: 3px solid #667eea;
+            background: #ebf4ff;
+        }
+
+        .notification-item .notif-message {
+            font-size: 0.85rem;
+            color: #2d3748;
+        }
+
+        .notification-item .notif-time {
+            font-size: 0.75rem;
+            color: #a0aec0;
+            margin-top: 4px;
+        }
+
+        .notification-badge {
+            display: inline-block;
+            background: #e53e3e;
+            color: white;
+            font-size: 0.7rem;
+            font-weight: 700;
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            line-height: 18px;
+            text-align: center;
+            margin-left: 4px;
+            vertical-align: super;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 20px;
+            color: #a0aec0;
+            font-size: 0.9rem;
+        }
+
     </style>
 </head>
 <body>
@@ -784,6 +947,7 @@
         <div class="tab-nav">
             <button class="tab-btn active" onclick="switchTab('predict')">Predict</button>
             <button class="tab-btn" onclick="switchTab('portfolio')">Portfolio</button>
+            <button class="tab-btn" onclick="switchTab('alerts')">Alerts</button>
         </div>
 
         <!-- === PREDICT TAB === -->
@@ -1133,6 +1297,107 @@
                 </div>
             </div>
         </div><!-- end tab-portfolio -->
+
+        <!-- === ALERTS TAB === -->
+        <div id="tab-alerts" class="tab-content">
+            <div class="alerts-container">
+                <h2>Alerts & Notifications <span id="notif-badge-header" class="notification-badge" style="display:none;">0</span></h2>
+
+                <div class="alerts-grid">
+                    <!-- Left Column: Watchlist + Create Alert -->
+                    <div>
+                        <!-- Watchlist -->
+                        <div class="alerts-panel" style="margin-bottom:20px;">
+                            <h3>Watchlist</h3>
+                            <div style="display:flex;gap:8px;margin-bottom:12px;">
+                                <select id="wl-symbol" style="flex:1;padding:8px;border:1px solid #e2e8f0;border-radius:6px;">
+                                    <option value="BTCUSDT">BTC/USDT</option>
+                                    <option value="ETHUSDT">ETH/USDT</option>
+                                    <option value="BNBUSDT">BNB/USDT</option>
+                                    <option value="SOLUSDT">SOL/USDT</option>
+                                    <option value="XRPUSDT">XRP/USDT</option>
+                                    <option value="DOGEUSDT">DOGE/USDT</option>
+                                    <option value="ADAUSDT">ADA/USDT</option>
+                                    <option value="AVAXUSDT">AVAX/USDT</option>
+                                    <option value="DOTUSDT">DOT/USDT</option>
+                                    <option value="LINKUSDT">LINK/USDT</option>
+                                    <option value="LTCUSDT">LTC/USDT</option>
+                                    <option value="ATOMUSDT">ATOM/USDT</option>
+                                    <option value="UNIUSDT">UNI/USDT</option>
+                                    <option value="APTUSDT">APT/USDT</option>
+                                    <option value="MATICUSDT">MATIC/USDT</option>
+                                </select>
+                                <button class="btn" style="width:auto;margin:0;padding:8px 16px;" onclick="addToWatchlist()">Add</button>
+                            </div>
+                            <div id="watchlist-items"></div>
+                        </div>
+
+                        <!-- Create Alert -->
+                        <div class="alerts-panel">
+                            <h3>Create Alert</h3>
+                            <div style="margin-bottom:10px;">
+                                <label style="font-size:0.8rem;font-weight:600;color:#4a5568;">Symbol</label>
+                                <select id="alert-symbol" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;margin-top:4px;">
+                                    <option value="">Select from watchlist...</option>
+                                </select>
+                            </div>
+                            <div style="margin-bottom:10px;">
+                                <label style="font-size:0.8rem;font-weight:600;color:#4a5568;">Alert Type</label>
+                                <select id="alert-type" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;margin-top:4px;" onchange="toggleAlertFields()">
+                                    <option value="signal_change">Signal Change (BUY/SELL)</option>
+                                    <option value="price_threshold">Price Threshold</option>
+                                </select>
+                            </div>
+                            <!-- Signal Change fields -->
+                            <div id="alert-fields-signal">
+                                <div style="margin-bottom:10px;">
+                                    <label style="font-size:0.8rem;font-weight:600;color:#4a5568;">Direction</label>
+                                    <select id="alert-direction" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;margin-top:4px;">
+                                        <option value="BUY">BUY signal</option>
+                                        <option value="SELL">SELL signal</option>
+                                    </select>
+                                </div>
+                                <div style="margin-bottom:10px;">
+                                    <label style="font-size:0.8rem;font-weight:600;color:#4a5568;">Min Confidence</label>
+                                    <input type="range" id="alert-min-conf" min="0.1" max="1.0" step="0.1" value="0.5" style="width:70%;" oninput="document.getElementById('alert-min-conf-val').textContent=this.value">
+                                    <span id="alert-min-conf-val" style="font-weight:600;color:#667eea;">0.5</span>
+                                </div>
+                            </div>
+                            <!-- Price Threshold fields -->
+                            <div id="alert-fields-price" style="display:none;">
+                                <div style="margin-bottom:10px;">
+                                    <label style="font-size:0.8rem;font-weight:600;color:#4a5568;">Condition</label>
+                                    <select id="alert-price-dir" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;margin-top:4px;">
+                                        <option value="above">Price goes above</option>
+                                        <option value="below">Price goes below</option>
+                                    </select>
+                                </div>
+                                <div style="margin-bottom:10px;">
+                                    <label style="font-size:0.8rem;font-weight:600;color:#4a5568;">Target Price ($)</label>
+                                    <input type="number" id="alert-target-price" step="0.01" placeholder="70000" style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;margin-top:4px;">
+                                </div>
+                            </div>
+                            <button class="btn" onclick="createAlert()" style="margin-top:6px;">Create Alert</button>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Active Alerts + Notifications -->
+                    <div>
+                        <!-- Active Alerts -->
+                        <div class="alerts-panel" style="margin-bottom:20px;">
+                            <h3>Active Alerts (<span id="alerts-count">0</span>)</h3>
+                            <div id="alerts-list"></div>
+                        </div>
+
+                        <!-- Notifications -->
+                        <div class="alerts-panel">
+                            <h3>Notifications <span id="notif-badge-panel" class="notification-badge" style="display:none;">0</span></h3>
+                            <div id="notifications-list"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div><!-- end tab-alerts -->
 
     </div>
 
@@ -1793,9 +2058,8 @@
             document.getElementById('tab-' + tabName).classList.add('active');
             event.target.classList.add('active');
 
-            if (tabName === 'portfolio') {
-                loadPortfolio();
-            }
+            if (tabName === 'portfolio') loadPortfolio();
+            if (tabName === 'alerts') loadAlertsTab();
         }
 
         // ==================== Portfolio ====================
@@ -1951,6 +2215,229 @@
                 loadPortfolio();
             } catch (error) {
                 alert('Failed to delete position: ' + (error.response?.data?.error || error.message));
+            }
+        }
+
+        // ==================== Alerts & Notifications ====================
+        function toggleAlertFields() {
+            const type = document.getElementById('alert-type').value;
+            document.getElementById('alert-fields-signal').style.display = type === 'signal_change' ? 'block' : 'none';
+            document.getElementById('alert-fields-price').style.display = type === 'price_threshold' ? 'block' : 'none';
+        }
+
+        async function loadAlertsTab() {
+            await Promise.all([loadWatchlist(), loadAlerts(), loadNotifications()]);
+        }
+
+        // --- Watchlist ---
+        async function loadWatchlist() {
+            try {
+                const resp = await axios.get('/api/watchlist');
+                const items = resp.data.watchlist;
+                const container = document.getElementById('watchlist-items');
+                const alertSymbolSelect = document.getElementById('alert-symbol');
+
+                // Update alert symbol dropdown
+                alertSymbolSelect.innerHTML = '<option value="">Select from watchlist...</option>';
+                items.forEach(item => {
+                    const opt = document.createElement('option');
+                    opt.value = item.symbol;
+                    opt.textContent = item.display_name || item.symbol;
+                    alertSymbolSelect.appendChild(opt);
+                });
+
+                // Render watchlist items
+                if (items.length === 0) {
+                    container.innerHTML = '<div class="empty-state">No symbols in watchlist. Add one above.</div>';
+                    return;
+                }
+                container.innerHTML = '';
+                items.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'watchlist-item';
+                    div.innerHTML = `
+                        <div>
+                            <span class="wl-symbol">${item.display_name || item.symbol}</span>
+                            <span class="wl-meta">${item.interval}</span>
+                        </div>
+                        <button class="btn-sm btn-delete" onclick="removeWatchlistItem(${item.id})">Remove</button>
+                    `;
+                    container.appendChild(div);
+                });
+            } catch (error) {
+                console.error('Failed to load watchlist:', error);
+            }
+        }
+
+        async function addToWatchlist() {
+            const symbol = document.getElementById('wl-symbol').value;
+            try {
+                await axios.post('/api/watchlist', { symbol });
+                loadWatchlist();
+            } catch (error) {
+                if (error.response?.status === 409) {
+                    alert(symbol + ' is already in your watchlist.');
+                } else {
+                    alert('Failed to add: ' + (error.response?.data?.error || error.message));
+                }
+            }
+        }
+
+        async function removeWatchlistItem(id) {
+            try {
+                await axios.delete('/api/watchlist/' + id);
+                loadWatchlist();
+            } catch (error) {
+                alert('Failed to remove: ' + (error.response?.data?.error || error.message));
+            }
+        }
+
+        // --- Alerts ---
+        async function loadAlerts() {
+            try {
+                const resp = await axios.get('/api/alerts');
+                const alerts = resp.data.alerts;
+                document.getElementById('alerts-count').textContent = alerts.filter(a => a.is_active).length;
+
+                const container = document.getElementById('alerts-list');
+                if (alerts.length === 0) {
+                    container.innerHTML = '<div class="empty-state">No alerts configured. Create one on the left.</div>';
+                    return;
+                }
+                container.innerHTML = '';
+                alerts.forEach(alert => {
+                    let condition = {};
+                    try { condition = JSON.parse(alert.condition || '{}'); } catch(e) {}
+                    const typeClass = alert.alert_type === 'signal_change' ? 'signal' : 'price';
+                    const typeLabel = alert.alert_type === 'signal_change' ? 'Signal' : 'Price';
+
+                    let condText = '';
+                    if (alert.alert_type === 'signal_change') {
+                        condText = `${condition.direction || '?'} signal, min confidence: ${(condition.min_confidence || 0.5)}`;
+                    } else {
+                        condText = `Price ${condition.direction || '?'} $${condition.target_price || '?'}`;
+                    }
+
+                    const div = document.createElement('div');
+                    div.className = 'alert-item';
+                    div.innerHTML = `
+                        <div class="alert-header">
+                            <div>
+                                <span class="alert-symbol">${alert.symbol}</span>
+                                <span class="alert-type-badge ${typeClass}">${typeLabel}</span>
+                            </div>
+                            <div>
+                                <button class="alert-active-toggle ${alert.is_active ? 'on' : 'off'}" onclick="toggleAlert(${alert.id}, ${alert.is_active ? 'false' : 'true'})">${alert.is_active ? 'Active' : 'Off'}</button>
+                                <button class="btn-sm btn-delete" onclick="deleteAlert(${alert.id})" style="margin-left:4px;">Del</button>
+                            </div>
+                        </div>
+                        <div class="alert-condition">${condText}</div>
+                        ${alert.last_triggered ? '<div style="font-size:0.7rem;color:#a0aec0;margin-top:4px;">Last triggered: ' + new Date(alert.last_triggered).toLocaleString() + '</div>' : ''}
+                    `;
+                    container.appendChild(div);
+                });
+            } catch (error) {
+                console.error('Failed to load alerts:', error);
+            }
+        }
+
+        async function createAlert() {
+            const symbol = document.getElementById('alert-symbol').value;
+            const alertType = document.getElementById('alert-type').value;
+
+            if (!symbol) {
+                alert('Please select a symbol from your watchlist.');
+                return;
+            }
+
+            let condition = {};
+            if (alertType === 'signal_change') {
+                condition = {
+                    direction: document.getElementById('alert-direction').value,
+                    min_confidence: parseFloat(document.getElementById('alert-min-conf').value)
+                };
+            } else {
+                const targetPrice = parseFloat(document.getElementById('alert-target-price').value);
+                if (!targetPrice) {
+                    alert('Please enter a target price.');
+                    return;
+                }
+                condition = {
+                    direction: document.getElementById('alert-price-dir').value,
+                    target_price: targetPrice
+                };
+            }
+
+            try {
+                await axios.post('/api/alerts', { symbol, alert_type: alertType, condition });
+                loadAlerts();
+            } catch (error) {
+                alert('Failed to create alert: ' + (error.response?.data?.error || error.message));
+            }
+        }
+
+        async function toggleAlert(alertId, newState) {
+            try {
+                await axios.put('/api/alerts/' + alertId, { is_active: newState });
+                loadAlerts();
+            } catch (error) {
+                alert('Failed to update alert.');
+            }
+        }
+
+        async function deleteAlert(alertId) {
+            if (!confirm('Delete this alert?')) return;
+            try {
+                await axios.delete('/api/alerts/' + alertId);
+                loadAlerts();
+            } catch (error) {
+                alert('Failed to delete alert.');
+            }
+        }
+
+        // --- Notifications ---
+        async function loadNotifications() {
+            try {
+                const resp = await axios.get('/api/alerts/notifications?limit=30');
+                const notifications = resp.data.notifications;
+                const unseenCount = notifications.filter(n => !n.seen).length;
+
+                // Update badges
+                const headerBadge = document.getElementById('notif-badge-header');
+                const panelBadge = document.getElementById('notif-badge-panel');
+                if (unseenCount > 0) {
+                    headerBadge.textContent = unseenCount;
+                    headerBadge.style.display = 'inline-block';
+                    panelBadge.textContent = unseenCount;
+                    panelBadge.style.display = 'inline-block';
+                } else {
+                    headerBadge.style.display = 'none';
+                    panelBadge.style.display = 'none';
+                }
+
+                const container = document.getElementById('notifications-list');
+                if (notifications.length === 0) {
+                    container.innerHTML = '<div class="empty-state">No notifications yet. Alerts will appear here when triggered.</div>';
+                    return;
+                }
+                container.innerHTML = '';
+                notifications.forEach(notif => {
+                    const div = document.createElement('div');
+                    div.className = 'notification-item' + (notif.seen ? '' : ' unseen');
+                    div.innerHTML = `
+                        <div class="notif-message">${notif.message}</div>
+                        <div class="notif-time">${notif.symbol} &middot; ${new Date(notif.created_at).toLocaleString()}</div>
+                    `;
+                    if (!notif.seen) {
+                        div.onclick = async () => {
+                            await axios.put('/api/alerts/notifications/' + notif.id + '/seen');
+                            loadNotifications();
+                        };
+                    }
+                    container.appendChild(div);
+                });
+            } catch (error) {
+                console.error('Failed to load notifications:', error);
             }
         }
     </script>
