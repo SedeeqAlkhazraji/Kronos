@@ -914,6 +914,118 @@
             font-size: 0.9rem;
         }
 
+        /* Backtest Styles */
+        .backtest-container {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .backtest-container h2 {
+            color: #4a5568;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 10px;
+        }
+
+        .bt-config {
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+
+        .bt-config h3 {
+            color: #4a5568;
+            margin-bottom: 14px;
+        }
+
+        .bt-metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 14px;
+            margin-bottom: 24px;
+        }
+
+        .bt-metric {
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 16px;
+            text-align: center;
+        }
+
+        .bt-metric .metric-label {
+            font-size: 0.75rem;
+            color: #718096;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .bt-metric .metric-value {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #2d3748;
+        }
+
+        .bt-metric .metric-value.positive { color: #38a169; }
+        .bt-metric .metric-value.negative { color: #e53e3e; }
+
+        #bt-equity-chart {
+            width: 100%;
+            height: 350px;
+            margin-bottom: 24px;
+        }
+
+        .bt-trades-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.82rem;
+        }
+
+        .bt-trades-table th {
+            background: #f7fafc;
+            color: #4a5568;
+            font-weight: 600;
+            padding: 8px;
+            text-align: left;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .bt-trades-table td {
+            padding: 8px;
+            border-bottom: 1px solid #edf2f7;
+        }
+
+        .bt-history-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            cursor: pointer;
+        }
+
+        .bt-history-item:hover {
+            background: #edf2f7;
+        }
+
+        .bt-loading {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .bt-loading.show {
+            display: block;
+        }
+
     </style>
 </head>
 <body>
@@ -948,6 +1060,7 @@
             <button class="tab-btn active" onclick="switchTab('predict')">Predict</button>
             <button class="tab-btn" onclick="switchTab('portfolio')">Portfolio</button>
             <button class="tab-btn" onclick="switchTab('alerts')">Alerts</button>
+            <button class="tab-btn" onclick="switchTab('backtest')">Backtest</button>
         </div>
 
         <!-- === PREDICT TAB === -->
@@ -1398,6 +1511,145 @@
                 </div>
             </div>
         </div><!-- end tab-alerts -->
+
+        <!-- === BACKTEST TAB === -->
+        <div id="tab-backtest" class="tab-content">
+            <div class="backtest-container">
+                <h2>Strategy Backtesting</h2>
+
+                <!-- Config Form -->
+                <div class="bt-config">
+                    <h3>Configuration</h3>
+                    <div class="form-row">
+                        <div>
+                            <label>Symbol</label>
+                            <select id="bt-symbol">
+                                <option value="BTCUSDT">BTC/USDT</option>
+                                <option value="ETHUSDT">ETH/USDT</option>
+                                <option value="BNBUSDT">BNB/USDT</option>
+                                <option value="SOLUSDT">SOL/USDT</option>
+                                <option value="XRPUSDT">XRP/USDT</option>
+                                <option value="DOGEUSDT">DOGE/USDT</option>
+                                <option value="ADAUSDT">ADA/USDT</option>
+                                <option value="AVAXUSDT">AVAX/USDT</option>
+                                <option value="LINKUSDT">LINK/USDT</option>
+                                <option value="LTCUSDT">LTC/USDT</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>Interval</label>
+                            <select id="bt-interval">
+                                <option value="1h" selected>1 Hour</option>
+                                <option value="4h">4 Hours</option>
+                                <option value="1d">1 Day</option>
+                                <option value="15m">15 Minutes</option>
+                                <option value="5m">5 Minutes</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>Strategy</label>
+                            <select id="bt-strategy">
+                                <option value="threshold">Threshold (default)</option>
+                                <option value="always_follow">Always Follow Signals</option>
+                                <option value="conservative">Conservative (high confidence)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>Initial Capital ($)</label>
+                            <input type="number" id="bt-capital" value="10000" step="100">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div>
+                            <label>Buy Threshold (%)</label>
+                            <input type="number" id="bt-buy-thresh" value="2" step="0.5" min="0.5" max="10">
+                        </div>
+                        <div>
+                            <label>Sell Threshold (%)</label>
+                            <input type="number" id="bt-sell-thresh" value="2" step="0.5" min="0.5" max="10">
+                        </div>
+                        <div>
+                            <label>Min Confidence</label>
+                            <input type="number" id="bt-min-conf" value="0.5" step="0.1" min="0" max="1">
+                        </div>
+                        <div>
+                            <label>Data Points</label>
+                            <input type="number" id="bt-data-limit" value="2000" step="500" min="600" max="5000">
+                        </div>
+                    </div>
+                    <button class="btn" id="bt-run-btn" onclick="runBacktest()" style="max-width:250px;margin-top:8px;">Run Backtest</button>
+                </div>
+
+                <!-- Loading -->
+                <div id="bt-loading" class="bt-loading">
+                    <div class="spinner"></div>
+                    <p>Running backtest... This may take a few minutes depending on data size and model speed.</p>
+                </div>
+
+                <!-- Results Section (hidden until backtest runs) -->
+                <div id="bt-results" style="display:none;">
+                    <!-- Metrics -->
+                    <div class="bt-metrics">
+                        <div class="bt-metric">
+                            <div class="metric-label">Total Return</div>
+                            <div class="metric-value" id="bt-return">-</div>
+                        </div>
+                        <div class="bt-metric">
+                            <div class="metric-label">Final Capital</div>
+                            <div class="metric-value" id="bt-final-cap">-</div>
+                        </div>
+                        <div class="bt-metric">
+                            <div class="metric-label">Sharpe Ratio</div>
+                            <div class="metric-value" id="bt-sharpe">-</div>
+                        </div>
+                        <div class="bt-metric">
+                            <div class="metric-label">Max Drawdown</div>
+                            <div class="metric-value" id="bt-drawdown">-</div>
+                        </div>
+                        <div class="bt-metric">
+                            <div class="metric-label">Win Rate</div>
+                            <div class="metric-value" id="bt-winrate">-</div>
+                        </div>
+                        <div class="bt-metric">
+                            <div class="metric-label">Total Trades</div>
+                            <div class="metric-value" id="bt-trades">-</div>
+                        </div>
+                        <div class="bt-metric">
+                            <div class="metric-label">Profit Factor</div>
+                            <div class="metric-value" id="bt-profit-factor">-</div>
+                        </div>
+                    </div>
+
+                    <!-- Equity Curve -->
+                    <h3 style="color:#4a5568;margin-bottom:12px;">Equity Curve</h3>
+                    <div id="bt-equity-chart"></div>
+
+                    <!-- Trade Log -->
+                    <h3 style="color:#4a5568;margin:20px 0 12px;">Trade Log</h3>
+                    <div style="overflow-x:auto;max-height:400px;overflow-y:auto;">
+                        <table class="bt-trades-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Entry Date</th>
+                                    <th>Entry Price</th>
+                                    <th>Exit Date</th>
+                                    <th>Exit Price</th>
+                                    <th>P&L %</th>
+                                    <th>P&L $</th>
+                                    <th>Confidence</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bt-trades-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- History -->
+                <h3 style="color:#4a5568;margin:28px 0 12px;">Past Backtests</h3>
+                <div id="bt-history"></div>
+            </div>
+        </div><!-- end tab-backtest -->
 
     </div>
 
@@ -2060,6 +2312,7 @@
 
             if (tabName === 'portfolio') loadPortfolio();
             if (tabName === 'alerts') loadAlertsTab();
+            if (tabName === 'backtest') loadBacktestHistory();
         }
 
         // ==================== Portfolio ====================
@@ -2438,6 +2691,160 @@
                 });
             } catch (error) {
                 console.error('Failed to load notifications:', error);
+            }
+        }
+
+        // ==================== Backtesting ====================
+        async function runBacktest() {
+            const btn = document.getElementById('bt-run-btn');
+            const loading = document.getElementById('bt-loading');
+            const results = document.getElementById('bt-results');
+
+            btn.disabled = true;
+            loading.classList.add('show');
+            results.style.display = 'none';
+
+            try {
+                const resp = await axios.post('/api/backtest/run', {
+                    symbol: document.getElementById('bt-symbol').value,
+                    interval: document.getElementById('bt-interval').value,
+                    strategy: document.getElementById('bt-strategy').value,
+                    initial_capital: parseFloat(document.getElementById('bt-capital').value),
+                    buy_threshold: parseFloat(document.getElementById('bt-buy-thresh').value) / 100,
+                    sell_threshold: -(parseFloat(document.getElementById('bt-sell-thresh').value) / 100),
+                    min_confidence: parseFloat(document.getElementById('bt-min-conf').value),
+                    data_limit: parseInt(document.getElementById('bt-data-limit').value),
+                });
+
+                if (resp.data.success) {
+                    displayBacktestResults(resp.data.results);
+                } else {
+                    alert('Backtest failed: ' + (resp.data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Backtest failed: ' + (error.response?.data?.error || error.message));
+            } finally {
+                btn.disabled = false;
+                loading.classList.remove('show');
+            }
+        }
+
+        function displayBacktestResults(r) {
+            const results = document.getElementById('bt-results');
+            results.style.display = 'block';
+
+            // Metrics
+            const retEl = document.getElementById('bt-return');
+            retEl.textContent = (r.total_return_pct >= 0 ? '+' : '') + r.total_return_pct.toFixed(2) + '%';
+            retEl.className = 'metric-value ' + (r.total_return_pct >= 0 ? 'positive' : 'negative');
+
+            document.getElementById('bt-final-cap').textContent = '$' + r.final_capital.toFixed(2);
+
+            const sharpeEl = document.getElementById('bt-sharpe');
+            sharpeEl.textContent = r.sharpe_ratio.toFixed(2);
+            sharpeEl.className = 'metric-value ' + (r.sharpe_ratio >= 1 ? 'positive' : r.sharpe_ratio < 0 ? 'negative' : '');
+
+            const ddEl = document.getElementById('bt-drawdown');
+            ddEl.textContent = r.max_drawdown_pct.toFixed(2) + '%';
+            ddEl.className = 'metric-value negative';
+
+            const wrEl = document.getElementById('bt-winrate');
+            wrEl.textContent = (r.win_rate * 100).toFixed(1) + '%';
+            wrEl.className = 'metric-value ' + (r.win_rate >= 0.5 ? 'positive' : 'negative');
+
+            document.getElementById('bt-trades').textContent = r.total_trades;
+
+            const pfEl = document.getElementById('bt-profit-factor');
+            pfEl.textContent = r.profit_factor === Infinity ? 'Inf' : r.profit_factor.toFixed(2);
+            pfEl.className = 'metric-value ' + (r.profit_factor >= 1 ? 'positive' : 'negative');
+
+            // Equity Curve
+            if (r.equity_curve && r.equity_curve.length > 0) {
+                const x = r.equity_curve.map(p => p.timestamp || p.index);
+                const y = r.equity_curve.map(p => p.capital);
+
+                Plotly.newPlot('bt-equity-chart', [{
+                    x: x,
+                    y: y,
+                    type: 'scatter',
+                    mode: 'lines',
+                    fill: 'tozeroy',
+                    line: { color: r.total_return_pct >= 0 ? '#48bb78' : '#fc8181', width: 2 },
+                    fillcolor: r.total_return_pct >= 0 ? 'rgba(72,187,120,0.15)' : 'rgba(252,129,129,0.15)',
+                }], {
+                    title: 'Portfolio Value Over Time',
+                    xaxis: { title: 'Time' },
+                    yaxis: { title: 'Capital ($)', tickprefix: '$' },
+                    template: 'plotly_white',
+                    height: 350,
+                    margin: { t: 40, b: 40, l: 60, r: 20 },
+                    shapes: [{
+                        type: 'line',
+                        x0: x[0], x1: x[x.length - 1],
+                        y0: r.initial_capital, y1: r.initial_capital,
+                        line: { color: '#a0aec0', width: 1, dash: 'dash' }
+                    }]
+                });
+            }
+
+            // Trade Log
+            const tbody = document.getElementById('bt-trades-body');
+            tbody.innerHTML = '';
+            if (r.trades && r.trades.length > 0) {
+                r.trades.forEach((t, i) => {
+                    const pnlClass = t.pnl_pct >= 0 ? 'pnl-positive' : 'pnl-negative';
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${i + 1}</td>
+                        <td>${t.entry_timestamp ? t.entry_timestamp.split('.')[0] : '-'}</td>
+                        <td>$${t.entry_price.toFixed(2)}</td>
+                        <td>${t.exit_timestamp ? t.exit_timestamp.split('.')[0] : '-'}</td>
+                        <td>$${t.exit_price.toFixed(2)}</td>
+                        <td class="${pnlClass}">${t.pnl_pct >= 0 ? '+' : ''}${t.pnl_pct.toFixed(2)}%</td>
+                        <td class="${pnlClass}">${t.pnl_usd >= 0 ? '+' : ''}$${t.pnl_usd.toFixed(2)}</td>
+                        <td>${(t.confidence * 100).toFixed(0)}%</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            } else {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#a0aec0;padding:20px;">No trades were executed during this backtest.</td></tr>';
+            }
+
+            // Refresh history
+            loadBacktestHistory();
+        }
+
+        async function loadBacktestHistory() {
+            try {
+                const resp = await axios.get('/api/backtest/history?limit=10');
+                const backtests = resp.data.backtests;
+                const container = document.getElementById('bt-history');
+
+                if (backtests.length === 0) {
+                    container.innerHTML = '<div class="empty-state">No backtests run yet. Configure and run one above.</div>';
+                    return;
+                }
+
+                container.innerHTML = '';
+                backtests.forEach(bt => {
+                    const retClass = bt.total_return_pct >= 0 ? 'pnl-positive' : 'pnl-negative';
+                    const div = document.createElement('div');
+                    div.className = 'bt-history-item';
+                    div.innerHTML = `
+                        <div>
+                            <strong>${bt.symbol}</strong>
+                            <span style="color:#718096;font-size:0.8rem;margin-left:8px;">${bt.strategy}</span>
+                        </div>
+                        <div>
+                            <span class="${retClass}" style="font-weight:700;">${bt.total_return_pct >= 0 ? '+' : ''}${bt.total_return_pct.toFixed(2)}%</span>
+                            <span style="color:#718096;font-size:0.8rem;margin-left:12px;">${bt.total_trades} trades</span>
+                            <span style="color:#a0aec0;font-size:0.75rem;margin-left:12px;">${bt.created_at ? new Date(bt.created_at).toLocaleDateString() : ''}</span>
+                        </div>
+                    `;
+                    container.appendChild(div);
+                });
+            } catch (error) {
+                console.error('Failed to load backtest history:', error);
             }
         }
     </script>
