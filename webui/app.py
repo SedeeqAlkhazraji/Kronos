@@ -19,15 +19,27 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import database as db
 import data_fetcher
 from signal_engine import generate_signal
-import alert_manager
-import backtest_engine
+
+try:
+    import alert_manager
+    ALERTS_AVAILABLE = True
+except ImportError:
+    ALERTS_AVAILABLE = False
+    print("Warning: alert_manager not available (install apscheduler)")
+
+try:
+    import backtest_engine
+    BACKTEST_AVAILABLE = True
+except ImportError:
+    BACKTEST_AVAILABLE = False
+    print("Warning: backtest_engine not available")
 
 try:
     from model import Kronos, KronosTokenizer, KronosPredictor
     MODEL_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     MODEL_AVAILABLE = False
-    print("Warning: Kronos model cannot be imported, will use simulated data for demonstration")
+    print(f"Warning: Kronos model cannot be imported: {e}")
 
 app = Flask(__name__)
 CORS(app)
@@ -836,7 +848,8 @@ def generate_signal_endpoint():
 
         # Check alerts
         try:
-            alert_manager._check_alerts()
+            if ALERTS_AVAILABLE:
+                alert_manager._check_alerts()
         except Exception:
             pass
 
@@ -1167,7 +1180,8 @@ if __name__ == '__main__':
     db.init_db()
 
     # Start alert scheduler
-    alert_manager.start_scheduler()
+    if ALERTS_AVAILABLE:
+        alert_manager.start_scheduler()
 
     if MODEL_AVAILABLE:
         print("Tip: Load a Kronos model via /api/load-model, then generate signals via /api/signals/generate")
