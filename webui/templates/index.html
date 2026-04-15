@@ -2146,46 +2146,44 @@
                 showStatus('error', 'Please load data file first');
                 return;
             }
-            
+
             if (!modelLoaded) {
                 showStatus('error', 'Please load model first');
                 return;
             }
-            
+
             try {
                 showLoading(true);
                 document.getElementById('predict-btn').disabled = true;
-                
+
                 const lookback = parseInt(document.getElementById('lookback').value);
                 const predLen = parseInt(document.getElementById('pred-len').value);
-                
-                // Get selected time range from time window slider
-                const startHandle = document.getElementById('start-handle');
-                const startPercentage = parseFloat(startHandle.style.left) / 100;
-                
-                if (!sliderData) {
-                    showStatus('error', 'Time window slider not initialized');
-                    return;
-                }
-                
-                // Calculate selected time range
-                const totalTime = sliderData.endDate.getTime() - sliderData.startDate.getTime();
-                const startTime = sliderData.startDate.getTime() + (totalTime * startPercentage);
-                const startDate = new Date(startTime);
-                
+
                 // Get prediction quality parameters
                 const temperature = parseFloat(document.getElementById('temperature').value);
                 const topP = parseFloat(document.getElementById('top-p').value);
                 const sampleCount = parseInt(document.getElementById('sample-count').value);
-                
+
                 let predictionParams = {
                     file_path: currentDataFile,
                     lookback: lookback,
                     pred_len: predLen,
-                    start_date: startDate.toISOString().slice(0, 16), // Format as YYYY-MM-DDTHH:MM
                     temperature: temperature,
                     top_p: topP,
                     sample_count: sampleCount
+                };
+
+                // Only use slider start_date if dataset is large enough
+                const totalRows = currentDataInfo ? currentDataInfo.rows : 0;
+                if (sliderData && totalRows > (lookback + predLen) * 1.5) {
+                    const startHandle = document.getElementById('start-handle');
+                    const startPercentage = parseFloat(startHandle.style.left) / 100;
+                    const totalTime = sliderData.endDate.getTime() - sliderData.startDate.getTime();
+                    const startTime = sliderData.startDate.getTime() + (totalTime * startPercentage);
+                    const startDate = new Date(startTime);
+                    predictionParams.start_date = startDate.toISOString().slice(0, 16);
+                }
+                // Otherwise: no start_date → backend uses data from the beginning
                 };
                 
                 console.log('🚀 Starting prediction, parameters:', predictionParams);
