@@ -1101,18 +1101,55 @@
 
                 <hr style="margin: 20px 0; border: 1px solid #e2e8f0;">
 
-                <!-- Data File Selection -->
+                <!-- Live Crypto Data -->
                 <div class="form-group">
-                    <label for="data-file-select">Select Data File:</label>
-                    <select id="data-file-select">
-                        <option value="">Please load data file list first</option>
+                    <label>Fetch Live Crypto Data:</label>
+                    <select id="crypto-symbol-select">
+                        <option value="BTCUSDT">BTC/USDT</option>
+                        <option value="ETHUSDT">ETH/USDT</option>
+                        <option value="BNBUSDT">BNB/USDT</option>
+                        <option value="SOLUSDT">SOL/USDT</option>
+                        <option value="XRPUSDT">XRP/USDT</option>
+                        <option value="DOGEUSDT">DOGE/USDT</option>
+                        <option value="ADAUSDT">ADA/USDT</option>
+                        <option value="AVAXUSDT">AVAX/USDT</option>
+                        <option value="LINKUSDT">LINK/USDT</option>
+                        <option value="LTCUSDT">LTC/USDT</option>
                     </select>
-                    <small class="form-text">Select K-line data file from data directory</small>
+                </div>
+                <div class="form-group">
+                    <label>Interval:</label>
+                    <select id="crypto-interval-select">
+                        <option value="5m">5 Minutes</option>
+                        <option value="15m">15 Minutes</option>
+                        <option value="1h" selected>1 Hour</option>
+                        <option value="4h">4 Hours</option>
+                        <option value="1d">1 Day</option>
+                    </select>
+                    <small class="form-text">Fetches latest 600 candles from Binance (live data up to now)</small>
                 </div>
 
-                <button id="load-data-btn" class="btn btn-secondary">
-                    📁 Load Data
+                <button id="fetch-live-btn" class="btn btn-success" onclick="fetchLiveData()">
+                    Fetch Live Data
                 </button>
+
+                <hr style="margin: 20px 0; border: 1px solid #e2e8f0;">
+
+                <!-- OR load from CSV -->
+                <details style="margin-bottom:15px;">
+                    <summary style="cursor:pointer;color:#718096;font-size:0.85rem;">Or load from CSV file...</summary>
+                    <div style="margin-top:10px;">
+                        <div class="form-group">
+                            <label for="data-file-select">Select Data File:</label>
+                            <select id="data-file-select">
+                                <option value="">Please load data file list first</option>
+                            </select>
+                        </div>
+                        <button id="load-data-btn" class="btn btn-secondary">
+                            Load CSV Data
+                        </button>
+                    </div>
+                </details>
 
                 <!-- Data Information Display -->
                 <div id="data-info" class="data-info" style="display: none;">
@@ -1796,7 +1833,51 @@
             }
         }
 
-        // Load data file
+        // Fetch live crypto data from Binance
+        async function fetchLiveData() {
+            const symbol = document.getElementById('crypto-symbol-select').value;
+            const interval = document.getElementById('crypto-interval-select').value;
+
+            try {
+                showLoading(true);
+                document.getElementById('fetch-live-btn').disabled = true;
+                showStatus('info', `Fetching live ${symbol} data from Binance...`);
+
+                const response = await axios.post('/api/crypto/fetch', {
+                    symbol: symbol,
+                    interval: interval,
+                    limit: 600
+                });
+
+                if (response.data.success) {
+                    // Set the fetched file as the current data file
+                    currentDataFile = response.data.file_path;
+
+                    // Now load this data to get the data info
+                    const loadResp = await axios.post('/api/load-data', {
+                        file_path: response.data.file_path
+                    });
+
+                    if (loadResp.data.success) {
+                        currentDataInfo = loadResp.data.data_info;
+                        showDataInfo(loadResp.data.data_info);
+                        showStatus('success', `Fetched ${response.data.rows} live candles for ${symbol} (${response.data.start_date} to ${response.data.end_date})`);
+
+                        if (modelLoaded) {
+                            document.getElementById('predict-btn').disabled = false;
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to fetch live data:', error);
+                showStatus('error', `Failed to fetch data: ${error.response?.data?.error || error.message}`);
+            } finally {
+                showLoading(false);
+                document.getElementById('fetch-live-btn').disabled = false;
+            }
+        }
+
+        // Load data file from CSV
         async function loadData() {
             const filePath = document.getElementById('data-file-select').value;
             
