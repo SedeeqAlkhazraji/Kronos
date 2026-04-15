@@ -1126,7 +1126,7 @@
                         <option value="4h">4 Hours</option>
                         <option value="1d">1 Day</option>
                     </select>
-                    <small class="form-text">Fetches latest 600 candles from Binance (live data up to now)</small>
+                    <small class="form-text">Fetches live candles from CoinGecko (up to now)</small>
                 </div>
 
                 <button id="fetch-live-btn" class="btn btn-success" onclick="fetchLiveData()">
@@ -1191,14 +1191,14 @@
                 <!-- Prediction Parameters -->
                 <div class="form-group">
                     <label for="lookback">Lookback Window Size:</label>
-                    <input type="number" id="lookback" value="400" readonly>
-                    <small class="form-text">Fixed at 400 data points</small>
+                    <input type="number" id="lookback" value="400" min="50" max="2000">
+                    <small class="form-text">Auto-adjusts to available data</small>
                 </div>
 
                 <div class="form-group">
                     <label for="pred-len">Prediction Length:</label>
-                    <input type="number" id="pred-len" value="120" readonly>
-                    <small class="form-text">Fixed at 120 data points</small>
+                    <input type="number" id="pred-len" value="120" min="10" max="500">
+                    <small class="form-text">Number of future candles to predict</small>
                 </div>
 
                 <!-- Prediction Quality Parameters -->
@@ -1833,7 +1833,7 @@
             }
         }
 
-        // Fetch live crypto data from Binance
+        // Fetch live crypto data from CoinGecko
         async function fetchLiveData() {
             const symbol = document.getElementById('crypto-symbol-select').value;
             const interval = document.getElementById('crypto-interval-select').value;
@@ -1841,7 +1841,7 @@
             try {
                 showLoading(true);
                 document.getElementById('fetch-live-btn').disabled = true;
-                showStatus('info', `Fetching live ${symbol} data from Binance...`);
+                showStatus('info', `Fetching live ${symbol} data from CoinGecko...`);
 
                 const response = await axios.post('/api/crypto/fetch', {
                     symbol: symbol,
@@ -1927,7 +1927,17 @@
             document.getElementById('data-price-range').textContent = `${dataInfo.price_range.min.toFixed(4)} - ${dataInfo.price_range.max.toFixed(4)}`;
             document.getElementById('data-timeframe').textContent = dataInfo.timeframe;
             document.getElementById('data-prediction-cols').textContent = dataInfo.prediction_columns.join(', ');
-            
+
+            // Auto-adjust lookback and pred_len to fit available data
+            const totalRows = dataInfo.rows;
+            let lookback = Math.min(400, Math.floor(totalRows * 0.75));
+            let predLen = Math.min(120, totalRows - lookback);
+            lookback = Math.max(50, lookback);
+            predLen = Math.max(10, predLen);
+            document.getElementById('lookback').value = lookback;
+            document.getElementById('pred-len').value = predLen;
+            document.getElementById('window-size').textContent = `Window: ${lookback} lookback + ${predLen} predict = ${lookback + predLen} points (of ${totalRows} available)`;
+
             // Initialize time window slider
             initializeTimeWindowSlider(dataInfo);
         }
@@ -2011,9 +2021,10 @@
         function updateStartHandle(percentage) {
             const startHandle = document.getElementById('start-handle');
             const selection = document.getElementById('slider-selection');
-            
-            // Fixed window size of 520 data points
-            const windowSize = 520;
+
+            const lookback = parseInt(document.getElementById('lookback').value) || 100;
+            const predLen = parseInt(document.getElementById('pred-len').value) || 30;
+            const windowSize = lookback + predLen;
             const totalRows = sliderData ? sliderData.totalRows : 1000;
             const windowPercentage = windowSize / totalRows;
             
@@ -2035,9 +2046,10 @@
         function updateEndHandle(percentage) {
             const endHandle = document.getElementById('end-handle');
             const selection = document.getElementById('slider-selection');
-            
-            // Fixed window size of 520 data points
-            const windowSize = 520;
+
+            const lookback = parseInt(document.getElementById('lookback').value) || 100;
+            const predLen = parseInt(document.getElementById('pred-len').value) || 30;
+            const windowSize = lookback + predLen;
             const totalRows = sliderData ? sliderData.totalRows : 1000;
             const windowPercentage = windowSize / totalRows;
             
@@ -2077,22 +2089,18 @@
             document.getElementById('window-start').textContent = `Start: ${startDate.toLocaleDateString()}`;
             document.getElementById('window-end').textContent = `End: ${endDate.toLocaleDateString()}`;
             
-            // Display fixed window size
-            document.getElementById('window-size').textContent = `Window Size: 400 + 120 = 520 data points (fixed)`;
-            
-            // Input field values remain fixed
-            document.getElementById('lookback').value = 400;
-            document.getElementById('pred-len').value = 120;
+            const lb = document.getElementById('lookback').value;
+            const pl = document.getElementById('pred-len').value;
+            document.getElementById('window-size').textContent = `Window: ${lb} + ${pl} = ${parseInt(lb)+parseInt(pl)} points`;
         }
 
         // Update slider based on input fields
         function updateSliderFromInputs() {
             if (!sliderData) return;
-            
-            // Fixed window size: 400 + 120 = 520 data points
-            const lookback = 400;
-            const predLen = 120;
-            const windowSize = lookback + predLen; // Fixed at 520
+
+            const lookback = parseInt(document.getElementById('lookback').value) || 100;
+            const predLen = parseInt(document.getElementById('pred-len').value) || 30;
+            const windowSize = lookback + predLen;
             
             // Calculate slider position
             const totalRows = sliderData.totalRows;
