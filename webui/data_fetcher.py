@@ -3,38 +3,63 @@ import pandas as pd
 import os
 import time
 
-BINANCE_BASE_URL = "https://api.binance.com"
+COINGECKO_BASE_URL = "https://api.coingecko.com/api/v3"
 
-POPULAR_SYMBOLS = [
-    'BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT',
-    'DOGEUSDT', 'ADAUSDT', 'AVAXUSDT', 'DOTUSDT', 'MATICUSDT',
-    'LINKUSDT', 'LTCUSDT', 'ATOMUSDT', 'UNIUSDT', 'APTUSDT',
-]
+# Map our symbols to CoinGecko IDs
+SYMBOL_TO_CG_ID = {
+    'BTCUSDT': 'bitcoin',
+    'ETHUSDT': 'ethereum',
+    'BNBUSDT': 'binancecoin',
+    'SOLUSDT': 'solana',
+    'XRPUSDT': 'ripple',
+    'DOGEUSDT': 'dogecoin',
+    'ADAUSDT': 'cardano',
+    'AVAXUSDT': 'avalanche-2',
+    'DOTUSDT': 'polkadot',
+    'MATICUSDT': 'matic-network',
+    'LINKUSDT': 'chainlink',
+    'LTCUSDT': 'litecoin',
+    'ATOMUSDT': 'cosmos',
+    'UNIUSDT': 'uniswap',
+    'APTUSDT': 'aptos',
+}
 
-INTERVAL_MAP = {
-    '1m': '1m', '3m': '3m', '5m': '5m', '15m': '15m', '30m': '30m',
-    '1h': '1h', '2h': '2h', '4h': '4h', '6h': '6h', '8h': '8h', '12h': '12h',
-    '1d': '1d', '3d': '3d', '1w': '1w', '1M': '1M',
+POPULAR_SYMBOLS = list(SYMBOL_TO_CG_ID.keys())
+
+# CoinGecko interval → days mapping for /market_chart endpoint
+INTERVAL_TO_DAYS = {
+    '5m': 1,        # 1 day  → ~288 points at 5min
+    '15m': 3,       # 3 days → ~288 points at 15min (auto granularity)
+    '30m': 7,       # 7 days → ~336 points at 30min
+    '1h': 30,       # 30 days → ~720 points at hourly
+    '4h': 90,       # 90 days → ~540 points at 4h (approximated)
+    '1d': 365,      # 365 days → 365 points at daily
 }
 
 
 def fetch_klines(symbol, interval='1h', limit=500):
     """
-    Fetch OHLCV candlestick data from Binance public API.
+    Fetch OHLCV candlestick data from CoinGecko OHLC endpoint.
 
     Args:
         symbol: Trading pair, e.g. 'BTCUSDT'
-        interval: Candle interval ('1m','5m','15m','1h','4h','1d', etc.)
-        limit: Number of candles to fetch (max 1000)
+        interval: Candle interval ('5m','15m','1h','4h','1d')
+        limit: Ignored for CoinGecko (data size determined by days param)
 
     Returns:
         pd.DataFrame with columns: timestamps, open, high, low, close, volume, amount
     """
-    url = f"{BINANCE_BASE_URL}/api/v3/klines"
+    cg_id = SYMBOL_TO_CG_ID.get(symbol.upper())
+    if not cg_id:
+        raise ValueError(f"Unknown symbol: {symbol}. Supported: {list(SYMBOL_TO_CG_ID.keys())}")
+
+    days = INTERVAL_TO_DAYS.get(interval, 30)
+
+    # Use /ohlc endpoint for OHLC data
+    url = f"{COINGECKO_BASE_URL}/coins/{cg_id}/ohlc"
     params = {
-        'symbol': symbol.upper(),
-        'interval': INTERVAL_MAP.get(interval, interval),
-        'limit': min(limit, 1000),
+        'vs_currency': 'usd',
+        'days': days,
     }
 
     resp = requests.get(url, params=params, timeout=30)
@@ -49,56 +74,76 @@ def fetch_klines(symbol, interval='1h', limit=500):
             'high': float(candle[2]),
             'low': float(candle[3]),
             'close': float(candle[4]),
-            'volume': float(candle[5]),
-            'amount': float(candle[7]),  # quote asset volume
         })
 
     df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+
+    # CoinGecko OHLC doesn't provide volume, so fetch it from market_chart
+    try:
+        vol_url = f"{COINGECKO_BASE_URL}/coins/{cg_id}/market_chart"
+        vol_params = {'vs_currency': 'usd', 'days': days}
+        vol_resp = requests.get(vol_url, params=vol_params, timeout=30)
+        vol_resp.raise_for_status()
+        vol_data = vol_resp.json()
+
+        if 'total_volumes' in vol_data and len(vol_data['total_volumes']) > 0:
+            vol_df = pd.DataFrame(vol_data['total_volumes'], columns=['ts', 'volume'])
+            vol_df['ts'] = pd.to_datetime(vol_df['ts'], unit='ms')
+
+            # Merge volume by nearest timestamp
+            df['volume'] = 0.0
+            df['amount'] = 0.0
+            for i, row in df.iterrows():
+                diffs = (vol_df['ts'] - row['timestamps']).abs()
+                nearest_idx = diffs.idxmin()
+                df.at[i, 'volume'] = vol_df.at[nearest_idx, 'volume']
+                df.at[i, 'amount'] = vol_df.at[nearest_idx, 'volume'] * row['close']
+        else:
+            df['volume'] = 0.0
+            df['amount'] = 0.0
+    except Exception:
+        df['volume'] = 0.0
+        df['amount'] = 0.0
+
+    df = df.sort_values('timestamps').drop_duplicates(subset='timestamps').reset_index(drop=True)
     return df
 
 
 def fetch_klines_extended(symbol, interval='1h', total_limit=2000):
     """
-    Fetch more than 1000 candles by making multiple paginated requests.
+    Fetch extended data. CoinGecko doesn't paginate the same way,
+    so we request more days to get more data points.
     """
-    all_data = []
-    end_time = None
+    cg_id = SYMBOL_TO_CG_ID.get(symbol.upper())
+    if not cg_id:
+        raise ValueError(f"Unknown symbol: {symbol}")
 
-    while len(all_data) < total_limit:
-        batch_limit = min(1000, total_limit - len(all_data))
-        url = f"{BINANCE_BASE_URL}/api/v3/klines"
-        params = {
-            'symbol': symbol.upper(),
-            'interval': INTERVAL_MAP.get(interval, interval),
-            'limit': batch_limit,
-        }
-        if end_time:
-            params['endTime'] = end_time
+    # Request max days to get as much data as possible
+    days_map = {'5m': 1, '15m': 7, '30m': 14, '1h': 90, '4h': 180, '1d': 365}
+    days = days_map.get(interval, 90)
 
-        resp = requests.get(url, params=params, timeout=30)
-        resp.raise_for_status()
-        data = resp.json()
+    url = f"{COINGECKO_BASE_URL}/coins/{cg_id}/ohlc"
+    params = {'vs_currency': 'usd', 'days': days}
 
-        if not data:
-            break
+    resp = requests.get(url, params=params, timeout=30)
+    resp.raise_for_status()
+    data = resp.json()
 
-        for candle in data:
-            all_data.append({
-                'timestamps': pd.to_datetime(candle[0], unit='ms'),
-                'open': float(candle[1]),
-                'high': float(candle[2]),
-                'low': float(candle[3]),
-                'close': float(candle[4]),
-                'volume': float(candle[5]),
-                'amount': float(candle[7]),
-            })
+    rows = []
+    for candle in data:
+        rows.append({
+            'timestamps': pd.to_datetime(candle[0], unit='ms'),
+            'open': float(candle[1]),
+            'high': float(candle[2]),
+            'low': float(candle[3]),
+            'close': float(candle[4]),
+            'volume': 0.0,
+            'amount': 0.0,
+        })
 
-        end_time = int(data[0][0]) - 1
-        if len(data) < batch_limit:
-            break
-        time.sleep(0.1)
-
-    df = pd.DataFrame(all_data)
+    df = pd.DataFrame(rows)
     if not df.empty:
         df = df.sort_values('timestamps').drop_duplicates(subset='timestamps').reset_index(drop=True)
     return df
@@ -106,10 +151,15 @@ def fetch_klines_extended(symbol, interval='1h', total_limit=2000):
 
 def get_current_price(symbol):
     """Get the latest price for a symbol."""
-    url = f"{BINANCE_BASE_URL}/api/v3/ticker/price"
-    resp = requests.get(url, params={'symbol': symbol.upper()}, timeout=10)
+    cg_id = SYMBOL_TO_CG_ID.get(symbol.upper())
+    if not cg_id:
+        raise ValueError(f"Unknown symbol: {symbol}")
+
+    url = f"{COINGECKO_BASE_URL}/simple/price"
+    params = {'ids': cg_id, 'vs_currencies': 'usd'}
+    resp = requests.get(url, params=params, timeout=10)
     resp.raise_for_status()
-    return float(resp.json()['price'])
+    return float(resp.json()[cg_id]['usd'])
 
 
 def get_available_symbols():
