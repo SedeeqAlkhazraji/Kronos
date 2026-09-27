@@ -2160,13 +2160,40 @@
 
         // Start prediction
         async function startPrediction() {
-            if (!currentDataFile) {
-                showStatus('error', 'Please load data file first');
+            if (!modelLoaded) {
+                showStatus('error', 'Please load model first');
                 return;
             }
 
-            if (!modelLoaded) {
-                showStatus('error', 'Please load model first');
+            // Auto re-fetch fresh data before predicting
+            const symbol = document.getElementById('crypto-symbol-select').value;
+            const interval = document.getElementById('crypto-interval-select').value;
+            if (symbol && interval) {
+                try {
+                    showStatus('info', 'Fetching latest data before prediction...');
+                    const fetchResp = await axios.post('/api/crypto/fetch', {
+                        symbol: symbol, interval: interval, limit: 600
+                    });
+                    if (fetchResp.data.success) {
+                        currentDataFile = fetchResp.data.file_path;
+                        if (fetchResp.data.current_price) {
+                            window.verifiedCurrentPrice = fetchResp.data.current_price;
+                        }
+                        const loadResp = await axios.post('/api/load-data', {
+                            file_path: fetchResp.data.file_path
+                        });
+                        if (loadResp.data.success) {
+                            currentDataInfo = loadResp.data.data_info;
+                            showDataInfo(loadResp.data.data_info);
+                        }
+                    }
+                } catch (e) {
+                    // Fall through to use existing data
+                }
+            }
+
+            if (!currentDataFile) {
+                showStatus('error', 'Please fetch data first');
                 return;
             }
 
@@ -2257,7 +2284,8 @@
             bar.style.width = confPct + '%';
             bar.className = 'confidence-bar ' + (confPct >= 70 ? 'high' : confPct >= 40 ? 'medium' : 'low');
 
-            // Price details — use verified live price if available
+            // Price details
+            const details = signal.details || {};
             const changePct = signal.price_change_pct || 0;
             const predictedClose = signal.predicted_close || 0;
             const currentPrice = window.verifiedCurrentPrice || (predictedClose / (1 + changePct / 100));
