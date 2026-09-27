@@ -74,3 +74,7 @@ venv.bak/
 temp/
 tmp/
 .python-version
+webui/prediction_results/
+data/
+webui/kronos_invest.db
+webui/models/
