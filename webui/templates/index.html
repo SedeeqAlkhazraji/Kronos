@@ -1098,8 +1098,8 @@
                 </div>
 
                 <!-- Load Model Button -->
-                <button id="load-model-btn" class="btn btn-secondary">
-                    🔄 Load Model
+                <button id="load-model-btn" class="btn btn-secondary" onclick="loadModel()">
+                    Load Model
                 </button>
 
                 <hr style="margin: 20px 0; border: 1px solid #e2e8f0;">
@@ -1766,35 +1766,37 @@
         async function loadModel() {
             const modelKey = document.getElementById('model-select').value;
             const device = document.getElementById('device-select').value;
-            
+
             if (!modelKey) {
-                showStatus('error', 'Please select a model to load');
+                showStatus('error', 'Please select a model first');
                 return;
             }
-            
+
             try {
-                showLoading(true);
-                document.getElementById('load-model-btn').disabled = true;
-                
+                const btn = document.getElementById('load-model-btn');
+                btn.disabled = true;
+                btn.textContent = 'Loading model... please wait';
+                showStatus('info', 'Loading model — this may take a minute on first run (downloading weights)...');
+
                 const response = await axios.post('/api/load-model', {
                     model_key: modelKey,
                     device: device
-                });
-                
+                }, { timeout: 300000 }); // 5 min timeout for large model downloads
+
                 if (response.data.success) {
                     modelLoaded = true;
-                    showStatus('success', response.data.message);
-                    updateModelStatus();
+                    btn.textContent = 'Model Loaded';
+                    btn.style.background = 'linear-gradient(135deg, #48bb78 0%, #38a169 100%)';
+                    showStatus('success', 'Model loaded: ' + response.data.model_info.name + ' (' + response.data.model_info.params + ') — Ready to predict!');
                     document.getElementById('predict-btn').disabled = false;
-                    console.log('✅ Model loaded successfully:', response.data.model_info);
                 } else {
-                    showStatus('error', response.data.error);
+                    btn.textContent = 'Load Model';
+                    showStatus('error', response.data.error || 'Failed to load model');
                 }
             } catch (error) {
-                console.error('❌ Model loading failed:', error);
-                showStatus('error', `Model loading failed: ${error.response?.data?.error || error.message}`);
+                document.getElementById('load-model-btn').textContent = 'Load Model';
+                showStatus('error', 'Model loading failed: ' + (error.response?.data?.error || error.message));
             } finally {
-                showLoading(false);
                 document.getElementById('load-model-btn').disabled = false;
             }
         }
@@ -1844,10 +1846,11 @@
         async function fetchLiveData() {
             const symbol = document.getElementById('crypto-symbol-select').value;
             const interval = document.getElementById('crypto-interval-select').value;
+            const btn = document.getElementById('fetch-live-btn');
 
             try {
-                showLoading(true);
-                document.getElementById('fetch-live-btn').disabled = true;
+                btn.disabled = true;
+                btn.textContent = 'Fetching data...';
                 showStatus('info', `Fetching live ${symbol} data from CoinGecko...`);
 
                 const response = await axios.post('/api/crypto/fetch', {
@@ -1877,10 +1880,10 @@
                 }
             } catch (error) {
                 console.error('Failed to fetch live data:', error);
-                showStatus('error', `Failed to fetch data: ${error.response?.data?.error || error.message}`);
+                showStatus('error', 'Failed to fetch data: ' + (error.response?.data?.error || error.message));
             } finally {
-                showLoading(false);
-                document.getElementById('fetch-live-btn').disabled = false;
+                btn.disabled = false;
+                btn.textContent = 'Fetch Live Data';
             }
         }
 
@@ -2375,16 +2378,23 @@
         }
 
         // Display status information
+        let statusTimer = null;
         function showStatus(type, message) {
             const statusDiv = document.getElementById('model-status');
             statusDiv.className = `status ${type}`;
             statusDiv.textContent = message;
             statusDiv.style.display = 'block';
-            
-            // Auto-hide
-            setTimeout(() => {
-                statusDiv.style.display = 'none';
-            }, 5000);
+
+            // Clear previous timer
+            if (statusTimer) clearTimeout(statusTimer);
+
+            // Don't auto-hide info messages (loading states)
+            // Auto-hide success after 15s, error after 20s
+            if (type === 'success') {
+                statusTimer = setTimeout(() => { statusDiv.style.display = 'none'; }, 15000);
+            } else if (type === 'error') {
+                statusTimer = setTimeout(() => { statusDiv.style.display = 'none'; }, 20000);
+            }
         }
 
         // Show/hide loading status
