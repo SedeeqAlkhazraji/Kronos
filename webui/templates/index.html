@@ -2193,11 +2193,8 @@
                     const startDate = new Date(startTime);
                     predictionParams.start_date = startDate.toISOString().slice(0, 16);
                 }
-                // Otherwise: no start_date → backend uses data from the beginning
-                };
-                
-                console.log('🚀 Starting prediction, parameters:', predictionParams);
-                
+                // Otherwise: no start_date -> backend uses data from the beginning
+
                 const response = await axios.post('/api/predict', predictionParams);
                 
                 if (response.data.success) {
