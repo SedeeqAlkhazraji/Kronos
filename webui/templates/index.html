@@ -1073,7 +1073,10 @@
                 <div class="form-group">
                     <label for="model-select">Select Model:</label>
                     <select id="model-select">
-                        <option value="">Loading models...</option>
+                        <option value="">-- Select a model --</option>
+                        <option value="kronos-mini">Kronos-mini (4.1M) - Fast prediction</option>
+                        <option value="kronos-small">Kronos-small (24.7M) - Balanced</option>
+                        <option value="kronos-base">Kronos-base (102.3M) - Best accuracy</option>
                     </select>
                     <small class="form-text">Select the Kronos model to use</small>
                 </div>
@@ -1704,24 +1707,17 @@
 
         // Initialize application
         async function initializeApp() {
-            console.log('🚀 Initializing Kronos Web UI...');
-            
-            // Load available models
-            await loadAvailableModels();
-            
-            // Load data file list
-            await loadDataFiles();
-            
+            // Load data file list (non-blocking)
+            loadDataFiles();
+
             // Set up event listeners
             setupEventListeners();
-            
+
             // Initialize time slider
             initializeTimeSlider();
 
             // Set default date on portfolio form
             document.getElementById('pos-entry-date').value = new Date().toISOString().split('T')[0];
-
-            console.log('Application initialization completed');
         }
 
         // Load available models
