@@ -1073,7 +1073,7 @@
                 <div class="form-group">
                     <label for="model-select">Select Model:</label>
                     <select id="model-select">
-                        <option value="">Please load available models first</option>
+                        <option value="">Loading models...</option>
                     </select>
                     <small class="form-text">Select the Kronos model to use</small>
                 </div>
@@ -1731,28 +1731,39 @@
                 if (response.data.model_available) {
                     availableModels = response.data.models;
                     populateModelSelect();
-                    console.log('✅ Available models loaded successfully:', availableModels);
                 } else {
-                    console.warn('⚠️ Kronos model library not available');
-                    showStatus('warning', 'Kronos model library not available, will use simulated prediction');
+                    // API says models not available — use hardcoded fallback
+                    populateModelSelectFallback();
+                    showStatus('warning', 'Kronos model library not detected on server');
                 }
             } catch (error) {
-                console.error('❌ Failed to load available models:', error);
-                showStatus('error', 'Failed to load available models');
+                console.error('Failed to load models from API, using fallback:', error);
+                populateModelSelectFallback();
             }
         }
 
-        // Populate model selection dropdown
+        // Populate model selection dropdown from API data
         function populateModelSelect() {
             const modelSelect = document.getElementById('model-select');
-            modelSelect.innerHTML = '<option value="">Please select model</option>';
-            
+            modelSelect.innerHTML = '<option value="">-- Select a model --</option>';
+
             Object.entries(availableModels).forEach(([key, model]) => {
                 const option = document.createElement('option');
                 option.value = key;
                 option.textContent = `${model.name} (${model.params}) - ${model.description}`;
                 modelSelect.appendChild(option);
             });
+        }
+
+        // Hardcoded fallback if API call fails
+        function populateModelSelectFallback() {
+            const modelSelect = document.getElementById('model-select');
+            modelSelect.innerHTML = `
+                <option value="">-- Select a model --</option>
+                <option value="kronos-mini">Kronos-mini (4.1M) - Fast prediction</option>
+                <option value="kronos-small">Kronos-small (24.7M) - Balanced</option>
+                <option value="kronos-base">Kronos-base (102.3M) - Best accuracy</option>
+            `;
         }
 
         // Load model
