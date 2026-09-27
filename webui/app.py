@@ -52,12 +52,17 @@ tokenizer = None
 model = None
 predictor = None
 
+# Local models directory
+MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models')
+
 # Available model configurations
 AVAILABLE_MODELS = {
     'kronos-mini': {
         'name': 'Kronos-mini',
         'model_id': 'NeoQuasar/Kronos-mini',
         'tokenizer_id': 'NeoQuasar/Kronos-Tokenizer-2k',
+        'local_model': os.path.join(MODELS_DIR, 'Kronos-mini'),
+        'local_tokenizer': os.path.join(MODELS_DIR, 'Kronos-Tokenizer-2k'),
         'context_length': 2048,
         'params': '4.1M',
         'description': 'Lightweight model, suitable for fast prediction'
@@ -66,6 +71,8 @@ AVAILABLE_MODELS = {
         'name': 'Kronos-small',
         'model_id': 'NeoQuasar/Kronos-small',
         'tokenizer_id': 'NeoQuasar/Kronos-Tokenizer-base',
+        'local_model': os.path.join(MODELS_DIR, 'Kronos-small'),
+        'local_tokenizer': os.path.join(MODELS_DIR, 'Kronos-Tokenizer-base'),
         'context_length': 512,
         'params': '24.7M',
         'description': 'Small model, balanced performance and speed'
@@ -74,6 +81,8 @@ AVAILABLE_MODELS = {
         'name': 'Kronos-base',
         'model_id': 'NeoQuasar/Kronos-base',
         'tokenizer_id': 'NeoQuasar/Kronos-Tokenizer-base',
+        'local_model': os.path.join(MODELS_DIR, 'Kronos-base'),
+        'local_tokenizer': os.path.join(MODELS_DIR, 'Kronos-Tokenizer-base'),
         'context_length': 512,
         'params': '102.3M',
         'description': 'Base model, provides better prediction quality'
@@ -672,10 +681,27 @@ def load_model():
             return jsonify({'error': f'Unsupported model: {model_key}'}), 400
         
         model_config = AVAILABLE_MODELS[model_key]
-        
-        # Load tokenizer and model
-        tokenizer = KronosTokenizer.from_pretrained(model_config['tokenizer_id'])
-        model = Kronos.from_pretrained(model_config['model_id'])
+
+        # Load from local folder first, fall back to HuggingFace
+        local_tok = model_config.get('local_tokenizer', '')
+        local_mod = model_config.get('local_model', '')
+
+        if os.path.isdir(local_tok) and os.listdir(local_tok):
+            tok_path = local_tok
+            print(f"Loading tokenizer from local: {tok_path}")
+        else:
+            tok_path = model_config['tokenizer_id']
+            print(f"Downloading tokenizer from HuggingFace: {tok_path}")
+
+        if os.path.isdir(local_mod) and os.listdir(local_mod):
+            mod_path = local_mod
+            print(f"Loading model from local: {mod_path}")
+        else:
+            mod_path = model_config['model_id']
+            print(f"Downloading model from HuggingFace: {mod_path}")
+
+        tokenizer = KronosTokenizer.from_pretrained(tok_path)
+        model = Kronos.from_pretrained(mod_path)
         
         # Create predictor
         predictor = KronosPredictor(model, tokenizer, device=device, max_context=model_config['context_length'])
