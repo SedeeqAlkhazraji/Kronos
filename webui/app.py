@@ -765,7 +765,7 @@ def get_crypto_symbols():
 
 @app.route('/api/crypto/fetch', methods=['POST'])
 def fetch_crypto_data():
-    """Fetch live OHLCV data from Binance and save as CSV."""
+    """Fetch live OHLCV data from CoinGecko and save as CSV."""
     try:
         data = request.get_json()
         symbol = data.get('symbol', 'BTCUSDT')
@@ -775,12 +775,21 @@ def fetch_crypto_data():
         df = data_fetcher.fetch_klines(symbol, interval, limit)
         filepath = data_fetcher.save_klines_to_csv(df, symbol, interval)
 
+        # Also fetch verified current price
+        current_price = None
+        try:
+            current_price = data_fetcher.get_current_price(symbol)
+        except Exception:
+            if len(df) > 0:
+                current_price = float(df['close'].iloc[-1])
+
         return jsonify({
             'success': True,
             'file_path': filepath,
             'rows': len(df),
             'symbol': symbol,
             'interval': interval,
+            'current_price': current_price,
             'start_date': df['timestamps'].iloc[0].isoformat() if len(df) > 0 else None,
             'end_date': df['timestamps'].iloc[-1].isoformat() if len(df) > 0 else None,
             'message': f'Fetched {len(df)} candles for {symbol}'

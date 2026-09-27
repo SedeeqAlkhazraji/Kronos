@@ -1860,10 +1860,13 @@
                 });
 
                 if (response.data.success) {
-                    // Set the fetched file as the current data file
                     currentDataFile = response.data.file_path;
 
-                    // Now load this data to get the data info
+                    // Store verified live price
+                    if (response.data.current_price) {
+                        window.verifiedCurrentPrice = response.data.current_price;
+                    }
+
                     const loadResp = await axios.post('/api/load-data', {
                         file_path: response.data.file_path
                     });
@@ -1871,7 +1874,12 @@
                     if (loadResp.data.success) {
                         currentDataInfo = loadResp.data.data_info;
                         showDataInfo(loadResp.data.data_info);
-                        showStatus('success', `Fetched ${response.data.rows} live candles for ${symbol} (${response.data.start_date} to ${response.data.end_date})`);
+
+                        let priceMsg = '';
+                        if (response.data.current_price) {
+                            priceMsg = ` | Live price: $${response.data.current_price.toLocaleString()}`;
+                        }
+                        showStatus('success', 'Fetched ' + response.data.rows + ' candles for ' + symbol + priceMsg);
 
                         if (modelLoaded) {
                             document.getElementById('predict-btn').disabled = false;
@@ -2249,17 +2257,12 @@
             bar.style.width = confPct + '%';
             bar.className = 'confidence-bar ' + (confPct >= 70 ? 'high' : confPct >= 40 ? 'medium' : 'low');
 
-            // Price details
-            const details = signal.details || {};
-            document.getElementById('signal-current-price').textContent =
-                signal.predicted_close ? '$' + (signal.predicted_close - (signal.predicted_close * signal.price_change_pct / 100 / (1 + signal.price_change_pct / 100))).toFixed(2) : '-';
-
-            // Compute current price from predicted_close and change_pct
+            // Price details — use verified live price if available
             const changePct = signal.price_change_pct || 0;
             const predictedClose = signal.predicted_close || 0;
-            const currentPrice = predictedClose / (1 + changePct / 100);
-            document.getElementById('signal-current-price').textContent = '$' + currentPrice.toFixed(2);
-            document.getElementById('signal-predicted-price').textContent = '$' + predictedClose.toFixed(2);
+            const currentPrice = window.verifiedCurrentPrice || (predictedClose / (1 + changePct / 100));
+            document.getElementById('signal-current-price').textContent = '$' + currentPrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            document.getElementById('signal-predicted-price').textContent = '$' + predictedClose.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
             const changeEl = document.getElementById('signal-change-pct');
             changeEl.textContent = (changePct >= 0 ? '+' : '') + changePct.toFixed(2) + '%';
